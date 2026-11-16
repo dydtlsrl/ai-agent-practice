@@ -8,6 +8,20 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
+DEFAULT_MAX_OUTPUT_TOKENS = 128
+
+
+def get_max_output_tokens(var_name: str) -> int:
+    """환경변수에서 출력 토큰 상한을 읽는다. 없으면 기본값(128)을 사용한다."""
+    raw = os.getenv(var_name, "")
+    try:
+        value = int(raw) if raw else DEFAULT_MAX_OUTPUT_TOKENS
+    except ValueError:
+        raise ValueError(f"{var_name}는 정수여야 합니다.") from None
+    if value < 1:
+        raise ValueError(f"{var_name}는 1 이상이어야 합니다.")
+    return value
+
 
 @dataclass(frozen=True)
 class Reply:
@@ -55,7 +69,7 @@ class OpenAIClient:
         response = self.client.responses.create(
             model=self.model,
             input=question,
-            max_output_tokens=128,
+            max_output_tokens=get_max_output_tokens("OPENAI_MAX_OUTPUT_TOKENS"),
         )
         usage = getattr(response, "usage", None)
         detail = getattr(usage, "input_tokens_details", None) if usage is not None else None
@@ -83,7 +97,9 @@ class GeminiClient:
         except ImportError as exc:
             raise RuntimeError("Live 모드에는 pip install -r requirements.txt가 필요합니다.") from exc
         self.client = genai.Client(api_key=api_key)
-        self.config = types.GenerateContentConfig(max_output_tokens=128)
+        self.config = types.GenerateContentConfig(
+            max_output_tokens=get_max_output_tokens("GEMINI_MAX_OUTPUT_TOKENS")
+        )
         self.model = model
 
     def ask(self, question: str) -> Reply:
@@ -155,7 +171,15 @@ def load_local_env() -> None:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
-        if key in {"OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_EMBEDDING_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL_NAME"}:
+        if key in {
+            "OPENAI_API_KEY",
+            "OPENAI_MODEL",
+            "OPENAI_EMBEDDING_MODEL",
+            "OPENAI_MAX_OUTPUT_TOKENS",
+            "GEMINI_API_KEY",
+            "GEMINI_MODEL_NAME",
+            "GEMINI_MAX_OUTPUT_TOKENS",
+        }:
             os.environ.setdefault(key, value.strip().strip('"').strip("'"))
 
 
